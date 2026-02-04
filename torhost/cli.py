@@ -6,18 +6,18 @@ import subprocess
 import argparse
 import shutil
 
-from torhost.banner import show_banner
-
-DEFAULT_PORT = 8080
-SERVICE_NAME = "hidden_service"
-WAIT_TIME = 90
-
 WHITE = "\033[97m"
 GREEN = "\033[92m"
 CYAN = "\033[96m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
+
+from torhost.banner import show_banner
+
+DEFAULT_PORT = 8080
+SERVICE_NAME = "hidden_service"
+WAIT_TIME = 90
 
 def run(cmd, check=False, capture_output=True):
     if capture_output:
@@ -39,13 +39,27 @@ def command_exists(cmd):
     return shutil.which(cmd) is not None
 
 
+def is_termux():
+    return "com.termux" in os.environ.get("PREFIX", "")
+
+
 def require_sudo():
+    if is_termux():
+        return False
     if os.geteuid() != 0:
         print(f"{WHITE} [{RED}!{WHITE}] {RED}Root privileges required. Re-running with sudo...")
-        os.execvp("sudo", ["sudo", sys.executable] + sys.argv)
+        try:
+            os.execvp("sudo", ["sudo", sys.executable] + sys.argv)
+        except:
+            print(f"{WHITE} [{RED}!{WHITE}] {RED}sudo command not found. Trying without...")
+            return False
+    return True
 
 
 def detect_tor_user():
+    if is_termux():
+        return os.environ.get("USER", "tor")
+    
     for user in ("debian-tor", "tor"):
         try:
             run(f"id {user}", check=False)
@@ -67,16 +81,18 @@ def install_tor():
 
     print(f"{WHITE} [{YELLOW}+{WHITE}] {YELLOW}Tor not found. Installing...")
 
-    if command_exists("apt"):
-        result = run("sudo apt update && sudo apt install tor -y", check=False)
+    if is_termux():
+        result = run("pkg install tor -y", check=False)
+    elif command_exists("apt"):
+        result = run("apt update && apt install tor -y", check=False)
     elif command_exists("apt-get"):
-        result = run("sudo apt-get update && sudo apt-get install tor -y", check=False)
+        result = run("apt-get update && apt-get install tor -y", check=False)
     elif command_exists("yum"):
-        result = run("sudo yum install tor -y", check=False)
+        result = run("yum install tor -y", check=False)
     elif command_exists("dnf"):
-        result = run("sudo dnf install tor -y", check=False)
+        result = run("dnf install tor -y", check=False)
     elif command_exists("pacman"):
-        result = run("sudo pacman -S tor --noconfirm", check=False)
+        result = run("pacman -S tor --noconfirm", check=False)
     else:
         print(f"{WHITE} [{RED}!{WHITE}] {RED}Unsupported package manager. Install Tor manually.")
         return False
@@ -90,6 +106,15 @@ def install_tor():
 
 
 def restart_tor():
+    if is_termux():
+        run("pkill -f tor 2>/dev/null || true", check=False)
+        time.sleep(2)
+        run("tor 2>/dev/null &", check=False)
+        time.sleep(5)
+        if run("pgrep -f tor", check=False).returncode == 0:
+            return True
+        return False
+    
     services = [
         "tor@default",
         "tor",
@@ -117,6 +142,10 @@ def restart_tor():
 
 
 def check_tor_running():
+    if is_termux():
+        result = run("pgrep -f tor", check=False)
+        return result.returncode == 0
+    
     result = run("systemctl is-active tor 2>/dev/null || systemctl is-active tor.service 2>/dev/null || true", check=False)
     if result.returncode == 0 and "active" in result.stdout:
         return True
@@ -150,7 +179,8 @@ def main():
     
     print(f"{WHITE} [{GREEN}+{WHITE}] {GREEN}Starting Tor Hidden Service setup...")
     
-    require_sudo()
+    if not is_termux():
+        require_sudo()
     
     if not install_tor():
         print(f"{WHITE} [{RED}!{WHITE}] {RED}Cannot continue without Tor.")
@@ -161,8 +191,13 @@ def main():
             print(f"{WHITE} [{RED}!{WHITE}] {RED}Failed to start Tor.")
             sys.exit(1)
     
-    torrc = "/etc/tor/torrc"
-    tor_dir = "/var/lib/tor"
+    if is_termux():
+        torrc = os.path.expanduser("~/../usr/etc/tor/torrc")
+        tor_dir = os.path.expanduser("~/../usr/var/lib/tor")
+    else:
+        torrc = "/etc/tor/torrc"
+        tor_dir = "/var/lib/tor"
+    
     tor_user = detect_tor_user()
     
     if not tor_user:
@@ -175,7 +210,8 @@ def main():
     
     try:
         os.makedirs(hs_dir, exist_ok=True, mode=0o700)
-        run(f"chown -R {tor_user}:{tor_user} {hs_dir}", check=True)
+        if not is_termux():
+            run(f"chown -R {tor_user}:{tor_user} {hs_dir}", check=True)
         run(f"chmod 700 {hs_dir}", check=True)
         run(f"chmod 755 {tor_dir}", check=True)
         
