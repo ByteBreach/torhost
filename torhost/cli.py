@@ -6,6 +6,8 @@ import subprocess
 import argparse
 import shutil
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 WHITE = "\033[97m"
 GREEN = "\033[92m"
 CYAN = "\033[96m"
@@ -199,9 +201,18 @@ def main():
         from torhost.banner import show_banner
         show_banner()
     except ImportError:
-        print(f"{WHITE}TORHOST{WHITE}")
-        print(f"{WHITE}  {CYAN}({RED}ByteBreach{CYAN}){WHITE}")
-        print()
+        banner = f"""
+{WHITE} +---------------------------------------------------------------+
+{WHITE} |{GREEN} ████████╗ ██████╗ ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗ {WHITE} |
+{WHITE} |{GREEN} ╚══██╔══╝██╔═══██╗██╔══██╗██║  ██║██╔═══██╗██╔════╝╚══██╔══╝ {WHITE} |
+{WHITE} |{GREEN}    ██║   ██║   ██║██████╔╝███████║██║   ██║███████╗   ██║    {WHITE} |
+{WHITE} |{GREEN}    ██║   ██║   ██║██╔══██╗██╔══██║██║   ██║╚════██║   ██║    {WHITE} |
+{WHITE} |{GREEN}    ██║   ╚██████╔╝██║  ██║██║  ██║╚██████╔╝███████║   ██║    {WHITE} |
+{WHITE} |{GREEN}    ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝    {WHITE} |
+{WHITE} +-------------------------{CYAN}({RED}ByteBreach{CYAN}){WHITE}--------------------------+
+{RESET}
+"""
+        print(banner)
 
     parser = argparse.ArgumentParser(description="Set up a Tor hidden service")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, 
