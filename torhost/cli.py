@@ -13,8 +13,6 @@ RED = "\033[91m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
 
-from torhost.banner import show_banner
-
 DEFAULT_PORT = 8080
 SERVICE_NAME = "hidden_service"
 WAIT_TIME = 90
@@ -47,11 +45,14 @@ def require_sudo():
     if is_termux():
         return False
     if os.geteuid() != 0:
-        print(f"{WHITE} [{RED}!{WHITE}] {RED}Root privileges required. Re-running with sudo...")
+        print(f"{WHITE} [{RED}!{WHITE}] {RED}Root privileges required. Trying to get sudo...")
         try:
             os.execvp("sudo", ["sudo", sys.executable] + sys.argv)
-        except:
-            print(f"{WHITE} [{RED}!{WHITE}] {RED}sudo command not found. Trying without...")
+        except FileNotFoundError:
+            print(f"{WHITE} [{RED}!{WHITE}] {RED}sudo not found. Continuing without root...")
+            return False
+        except Exception as e:
+            print(f"{WHITE} [{RED}!{WHITE}] {RED}Error with sudo: {e}")
             return False
     return True
 
@@ -84,15 +85,30 @@ def install_tor():
     if is_termux():
         result = run("pkg install tor -y", check=False)
     elif command_exists("apt"):
-        result = run("apt update && apt install tor -y", check=False)
+        if os.geteuid() == 0:
+            result = run("apt update && apt install tor -y", check=False)
+        else:
+            result = run("sudo apt update && sudo apt install tor -y", check=False)
     elif command_exists("apt-get"):
-        result = run("apt-get update && apt-get install tor -y", check=False)
+        if os.geteuid() == 0:
+            result = run("apt-get update && apt-get install tor -y", check=False)
+        else:
+            result = run("sudo apt-get update && sudo apt-get install tor -y", check=False)
     elif command_exists("yum"):
-        result = run("yum install tor -y", check=False)
+        if os.geteuid() == 0:
+            result = run("yum install tor -y", check=False)
+        else:
+            result = run("sudo yum install tor -y", check=False)
     elif command_exists("dnf"):
-        result = run("dnf install tor -y", check=False)
+        if os.geteuid() == 0:
+            result = run("dnf install tor -y", check=False)
+        else:
+            result = run("sudo dnf install tor -y", check=False)
     elif command_exists("pacman"):
-        result = run("pacman -S tor --noconfirm", check=False)
+        if os.geteuid() == 0:
+            result = run("pacman -S tor --noconfirm", check=False)
+        else:
+            result = run("sudo pacman -S tor --noconfirm", check=False)
     else:
         print(f"{WHITE} [{RED}!{WHITE}] {RED}Unsupported package manager. Install Tor manually.")
         return False
@@ -122,10 +138,16 @@ def restart_tor():
     ]
     
     for svc in services:
-        result = run(f"systemctl restart {svc}", check=False)
+        if os.geteuid() == 0:
+            result = run(f"systemctl restart {svc}", check=False)
+        else:
+            result = run(f"sudo systemctl restart {svc}", check=False)
         if result.returncode == 0:
             time.sleep(3)
-            status_result = run(f"systemctl is-active {svc}", check=False)
+            if os.geteuid() == 0:
+                status_result = run(f"systemctl is-active {svc}", check=False)
+            else:
+                status_result = run(f"sudo systemctl is-active {svc}", check=False)
             if status_result.stdout.strip() == "active":
                 return True
     
@@ -146,7 +168,11 @@ def check_tor_running():
         result = run("pgrep -f tor", check=False)
         return result.returncode == 0
     
-    result = run("systemctl is-active tor 2>/dev/null || systemctl is-active tor.service 2>/dev/null || true", check=False)
+    if os.geteuid() == 0:
+        result = run("systemctl is-active tor 2>/dev/null || systemctl is-active tor.service 2>/dev/null || true", check=False)
+    else:
+        result = run("sudo systemctl is-active tor 2>/dev/null || sudo systemctl is-active tor.service 2>/dev/null || true", check=False)
+    
     if result.returncode == 0 and "active" in result.stdout:
         return True
     
@@ -169,8 +195,14 @@ def validate_onion_address(onion):
 
 
 def main():
-    show_banner()
-    
+    try:
+        from torhost.banner import show_banner
+        show_banner()
+    except ImportError:
+        print(f"{WHITE}TORHOST{WHITE}")
+        print(f"{WHITE}  {CYAN}({RED}ByteBreach{CYAN}){WHITE}")
+        print()
+
     parser = argparse.ArgumentParser(description="Set up a Tor hidden service")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, 
                        help=f"Local port to expose (default: {DEFAULT_PORT})")
@@ -179,8 +211,7 @@ def main():
     
     print(f"{WHITE} [{GREEN}+{WHITE}] {GREEN}Starting Tor Hidden Service setup...")
     
-    if not is_termux():
-        require_sudo()
+    require_sudo()
     
     if not install_tor():
         print(f"{WHITE} [{RED}!{WHITE}] {RED}Cannot continue without Tor.")
@@ -210,7 +241,7 @@ def main():
     
     try:
         os.makedirs(hs_dir, exist_ok=True, mode=0o700)
-        if not is_termux():
+        if not is_termux() and os.geteuid() == 0:
             run(f"chown -R {tor_user}:{tor_user} {hs_dir}", check=True)
         run(f"chmod 700 {hs_dir}", check=True)
         run(f"chmod 755 {tor_dir}", check=True)
