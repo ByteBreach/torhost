@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-MWHITE = "\033[97m"
+WHITE = "\033[97m"
 GREEN = "\033[92m"
 CYAN = "\033[96m"
 RED = "\033[91m"
