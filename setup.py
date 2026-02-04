@@ -5,7 +5,7 @@ import os
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-version = "0.0.2"
+version = "0.0.1"
 init_path = os.path.join(BASE_DIR, "torhost", "__init__.py")
 with open(init_path, "r") as f:
     for line in f:
